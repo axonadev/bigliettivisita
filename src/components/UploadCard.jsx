@@ -1,11 +1,17 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import useAction from '../hooks/useAction';
+import { Box, Button, Typography, TextField, CircularProgress, Alert, Grid } from '@mui/material';
+import CloudUploadIcon from '@mui/icons-material/CloudUpload';
 
 function UploadCard({ codcliente, onUploadSuccess, idbvisita }) {
-  console.log('Props di UploadCard:', { codcliente, onUploadSuccess, idbvisita });
+  // console.log('Props di UploadCard:', { codcliente, onUploadSuccess, idbvisita });
   const [fileFronte, setFileFronte] = useState(null);
   const [fileRetro, setFileRetro] = useState(null);
-  const { doAction: uploadFile, loading, error, response } = useAction('UploadImmagine');
+  const { doAction: uploadFile, loading, error /*, response*/ } = useAction('UploadImmagine'); // response non usato direttamente qui
+  const [uploadStatus, setUploadStatus] = useState({ type: '', message: '', severity: 'info', show: false });
+
+  const fileInputFronteRef = useRef(null);
+  const fileInputRetroRef = useRef(null);
 
   const handleFileChange = (e, tipo) => {
     const file = e.target.files[0];
@@ -14,71 +20,94 @@ function UploadCard({ codcliente, onUploadSuccess, idbvisita }) {
     } else {
       setFileRetro(file);
     }
-    console.log(`File ${tipo} selezionato:`, file ? file.name : 'nessuno');
+    setUploadStatus({ show: false, message: '', severity: 'info' }); // Nasconde alert precedenti
+    // console.log(`File ${tipo} selezionato:`, file ? file.name : 'nessuno');
   };
 
   const handleUpload = async (tipo) => {
     const file = tipo === 'fronte' ? fileFronte : fileRetro;
     if (!file) {
-      alert(`Seleziona un file per il ${tipo}.`);
+      setUploadStatus({ type: tipo, message: `Seleziona un file per il ${tipo}.`, severity: 'warning', show: true });
       return;
     }
     if (!idbvisita) {
-      alert("È necessario un ID biglietto per caricare le immagini. Crea prima il biglietto.");
+      setUploadStatus({ type: tipo, message: "ID biglietto non fornito. Impossibile caricare.", severity: 'error', show: true });
       return;
     }
+    setUploadStatus({ show: false, message: '', severity: 'info' }); // Pulisce prima di un nuovo tentativo
 
-    console.log(`Upload immagine ${tipo} per ${idbvisita} (cliente: ${codcliente}):`, file.name);
-    // In una vera app, qui si creerebbe un oggetto FormData per inviare il file.
-    // Per la simulazione, passiamo solo i metadati.
-    const params = {
-      codcliente,
-      idbvisita,
-      tipo, // 'fronte' o 'retro'
-      nomeFile: file.name,
-      // fileData: file // Questo sarebbe il file stesso
-    };
-
+    const params = { codcliente, idbvisita, tipo, nomeFile: file.name /*, fileData: file */ };
     try {
       const result = await uploadFile(params);
       if (result && result.success) {
-        console.log(`Upload ${tipo} riuscito:`, result.urlImmagine);
-        alert(`Immagine ${tipo} "${file.name}" caricata con successo. URL (simulato): ${result.urlImmagine}`);
-        if (onUploadSuccess) onUploadSuccess(); // Per triggerare un refetch della lista biglietti
-        if (tipo === 'fronte') setFileFronte(null); // Resetta input
-        if (tipo === 'retro') setFileRetro(null);   // Resetta input
-        document.getElementById(`fileFronte-${idbvisita || 'new'}`).value = null; // Resetta l'input file visivamente
-        document.getElementById(`fileRetro-${idbvisita || 'new'}`).value = null;  // Resetta l'input file visivamente
-
+        setUploadStatus({ type: tipo, message: result.message || `Immagine ${tipo} caricata.`, severity: 'success', show: true });
+        if (onUploadSuccess) onUploadSuccess();
+        if (tipo === 'fronte') {
+          setFileFronte(null);
+          if(fileInputFronteRef.current) fileInputFronteRef.current.value = null;
+        } else {
+          setFileRetro(null);
+          if(fileInputRetroRef.current) fileInputRetroRef.current.value = null;
+        }
       } else {
-        alert(result.message || `Errore durante l'upload dell'immagine ${tipo}.`);
+        setUploadStatus({ type: tipo, message: result.message || `Errore upload ${tipo}.`, severity: 'error', show: true });
       }
     } catch (err) {
-      alert(`Errore upload ${tipo}: ${err.message || 'Si è verificato un problema.'}`);
+      setUploadStatus({ type: tipo, message: err.message || `Errore grave upload ${tipo}.`, severity: 'error', show: true });
     }
+    setTimeout(() => setUploadStatus(prev => ({ ...prev, show: false })), 4000);
   };
 
+  const renderFileInput = (type, fileState, ref) => (
+    <Box sx={{ mb: 2, display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
+      <Typography variant="subtitle2" gutterBottom sx={{textTransform: 'capitalize'}}>{type}:</Typography>
+      <TextField
+        type="file"
+        id={`file-${type}-${idbvisita || 'new'}`}
+        inputRef={ref}
+        onChange={(e) => handleFileChange(e, type)}
+        disabled={!idbvisita || loading}
+        fullWidth
+        size="small"
+        InputLabelProps={{ shrink: true }}
+        sx={{ mb: 1 }}
+      />
+      <Button
+        variant="contained"
+        color="secondary"
+        onClick={() => handleUpload(type)}
+        disabled={!fileState || loading || !idbvisita}
+        startIcon={loading && (type === 'fronte' ? fileFronte : fileRetro) ? <CircularProgress size={20} color="inherit" /> : <CloudUploadIcon />}
+        size="small"
+      >
+        Carica {type}
+      </Button>
+      {uploadStatus.show && uploadStatus.type === type && (
+        <Alert severity={uploadStatus.severity} sx={{ mt: 1, width: '100%' }}>{uploadStatus.message}</Alert>
+      )}
+    </Box>
+  );
+
   return (
-    <div>
-      <h4>{idbvisita ? `Modifica immagini per biglietto ID: ${idbvisita}` : 'Carica Immagini Biglietto (Seleziona o crea un biglietto)'}</h4>
-      {!idbvisita && <p style={{color: 'orange'}}>Salva prima un biglietto per poter caricare le immagini.</p>}
-      <div>
-        <label htmlFor={`fileFronte-${idbvisita || 'new'}`}>Immagine Fronte:</label>
-        <input type="file" id={`fileFronte-${idbvisita || 'new'}`} onChange={(e) => handleFileChange(e, 'fronte')} disabled={!idbvisita || loading} />
-        <button onClick={() => handleUpload('fronte')} disabled={!fileFronte || loading || !idbvisita}>
-          {loading && fileFronte ? 'Caricamento...' : 'Carica Fronte'}
-        </button>
-      </div>
-      <div>
-        <label htmlFor={`fileRetro-${idbvisita || 'new'}`}>Immagine Retro:</label>
-        <input type="file" id={`fileRetro-${idbvisita || 'new'}`} onChange={(e) => handleFileChange(e, 'retro')} disabled={!idbvisita || loading} />
-        <button onClick={() => handleUpload('retro')} disabled={!fileRetro || loading || !idbvisita}>
-          {loading && fileRetro ? 'Caricamento...' : 'Carica Retro'}
-        </button>
-      </div>
-      {error && <p style={{ color: 'red' }}>Errore Upload: {error.message}</p>}
-      {response && response.message && !response.success && <p style={{color: 'orange'}}>{response.message}</p>}
-    </div>
+    <Box>
+      <Typography variant="body1" gutterBottom>
+        {idbvisita ? `Carica immagini per biglietto ID: ${idbvisita}` : 'Seleziona un biglietto per caricare le immagini.'}
+      </Typography>
+      {!idbvisita && <Alert severity="warning" sx={{mb:1}}>Salva prima un biglietto per poter caricare le immagini.</Alert>}
+
+      <Grid container spacing={2}>
+        <Grid item xs={12} md={6}>
+          {renderFileInput('fronte', fileFronte, fileInputFronteRef)}
+        </Grid>
+        <Grid item xs={12} md={6}>
+          {renderFileInput('retro', fileRetro, fileInputRetroRef)}
+        </Grid>
+      </Grid>
+
+      {error && !uploadStatus.show && ( // Mostra errore hook generico solo se non c'è un errore specifico di upload
+        <Alert severity="error" sx={{ mt: 1, width: '100%' }}>Errore Hook Upload: {error.message}</Alert>
+      )}
+    </Box>
   );
 }
 
