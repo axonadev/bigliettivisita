@@ -1,96 +1,98 @@
-import React, { useState } from 'react'; // Aggiunto useState
+import React from 'react';
 import { useParams } from 'react-router-dom';
 import useFetch from '../hooks/useFetch';
-import UploadCard from './UploadCard';
-import LinkWebsite from './LinkWebsite';
+// import UploadCard from './UploadCard'; // Rimosso, la logica è in CardList
+// import LinkWebsite from './LinkWebsite'; // Rimosso, la logica è in CardList
 import CardList from './CardList';
+import { Container, Paper, Typography, Box, CircularProgress, Alert, Grid, Divider } from '@mui/material';
+import AccountCircleIcon from '@mui/icons-material/AccountCircle';
+import StyleIcon from '@mui/icons-material/Style'; // Icona per i biglietti
 
 function AdminDashboard(props) {
   console.log('Props di AdminDashboard:', props);
   const { codcliente } = useParams();
 
-  // Stato per tracciare il biglietto selezionato per l'editing di immagini/link
-  // Questo non è l'ID del biglietto *in corso di modifica* dentro CardList,
-  // ma quello le cui sezioni UploadCard e LinkWebsite (esterne a CardList) dovrebbero operare.
-  // In questa versione, UploadCard e LinkWebsite sono pensate per essere *dentro* CardList
-  // quando si modifica un biglietto specifico, o per un nuovo biglietto (UploadCard).
-  // Per semplificare, la versione attuale di UploadCard e LinkWebsite nel CardList è più integrata.
-  // Manteniamo una versione di UploadCard qui per la *creazione* di un *nuovo* biglietto,
-  // che però richiede prima che il biglietto esista (abbia un ID).
-  // Quindi, il flusso sarà: 1. Crea biglietto (solo nome) in CardList -> ottieni ID.
-  // 2. CardList mostra il nuovo biglietto e permette "Modifica" che apre Upload/Link interni.
-
-  // Questo UploadCard e LinkWebsite "globali" potrebbero essere usati per un biglietto "principale" o default.
-  // Per ora, li lascio ma potrebbero essere ridondanti con la logica in CardList.
-  // const [selectedCardIdForExternalEdit, setSelectedCardIdForExternalEdit] = useState(null);
-
-
   const { data: cliente, loading: loadingCliente, error: errorCliente } = useFetch('DatiCliente', { codcliente });
   const { data: biglietti, loading: loadingBiglietti, error: errorBiglietti, refetch: refetchBiglietti } = useFetch('ListaBiglietti', { codcliente });
 
-  if (loadingCliente || loadingBiglietti) return <p>Caricamento dashboard...</p>;
-  if (errorCliente) return <p>Errore caricamento dati cliente: {errorCliente ? errorCliente.message : 'Errore sconosciuto'}</p>;
-  // Non blocchiamo per errorBiglietti, CardList può gestire una lista vuota o errore.
+  if (loadingCliente) { // Mostra caricamento solo per i dati cliente iniziali
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}>
+        <CircularProgress />
+        <Typography sx={{ ml: 2 }}>Caricamento dashboard...</Typography>
+      </Box>
+    );
+  }
+
+  if (errorCliente) {
+    return (
+      <Container maxWidth="sm">
+        <Alert severity="error" sx={{ mt: 4 }}>
+          Errore nel caricamento dei dati cliente: {errorCliente.message || 'Si è verificato un problema.'}
+        </Alert>
+      </Container>
+    );
+  }
 
   return (
-    <div>
-      <h2>Dashboard Amministrativa</h2>
-      <p>Codice Cliente: <strong>{codcliente}</strong></p>
+    <Container maxWidth="lg" sx={{ mt: 2}}>
+      <Typography variant="h3" component="h1" gutterBottom sx={{display: 'flex', alignItems: 'center'}}>
+        <AccountCircleIcon fontSize="large" sx={{ mr: 1, color: 'primary.main' }} />
+        Dashboard Cliente
+      </Typography>
+      <Typography variant="h5" color="text.secondary" gutterBottom>
+        Codice Cliente: <strong>{codcliente}</strong>
+      </Typography>
+
       {cliente && (
-        <div style={{border: '1px solid #eee', padding: '10px', marginBottom: '20px'}}>
-          <h3>Dati Cliente</h3>
-          <p>Nome: {cliente.nome} {cliente.cognome}</p>
-          <p>Email: {cliente.email}</p>
-          <p>Telefono: {cliente.telefono}</p>
-        </div>
+        <Paper elevation={3} sx={{ p: 3, mb: 4, backgroundColor: 'primary.lighter', borderRadius: 2 }}>
+          <Typography variant="h6" gutterBottom sx={{color: 'primary.dark'}}>Dettagli Cliente</Typography>
+          <Grid container spacing={2}>
+            <Grid item xs={12} sm={6}>
+              <Typography variant="body1"><strong>Nome:</strong> {cliente.nome}</Typography>
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <Typography variant="body1"><strong>Cognome:</strong> {cliente.cognome}</Typography>
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <Typography variant="body1"><strong>Email:</strong> {cliente.email}</Typography>
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <Typography variant="body1"><strong>Telefono:</strong> {cliente.telefono}</Typography>
+            </Grid>
+          </Grid>
+        </Paper>
       )}
-      {!cliente && !loadingCliente && <p>Dati cliente non disponibili.</p>}
+      {!cliente && !loadingCliente && ( // Se cliente è null ma non sta caricando (improbabile se non c'è errore)
+         <Alert severity="info" sx={{ mb: 3 }}>Dati cliente non disponibili.</Alert>
+      )}
 
-      <hr />
-      <h3>Gestione Biglietti</h3>
+      <Divider sx={{ my: 3 }} />
 
-      {/*
-        Rimuovo UploadCard e LinkWebsite da qui perché la logica di modifica è più sensata
-        all'interno di ogni item della CardList, o dopo aver creato un nuovo biglietto in CardList.
-        UploadCard qui avrebbe senso solo se avessimo un ID biglietto "nuovo" già prima di salvarlo,
-        ma l'ID viene generato al salvataggio (simulato) del nome del biglietto.
-      */}
-      {/*
-      <h4>Operazioni su un biglietto specifico (selezionato o nuovo)</h4>
-      <p>ID Biglietto attualmente selezionato per modifica esterna: {selectedCardIdForExternalEdit || "Nessuno"}</p>
-      <UploadCard
-        codcliente={codcliente}
-        idbvisita={selectedCardIdForExternalEdit} // Deve essere l'ID del biglietto da modificare
-        onUploadSuccess={() => {
-            refetchBiglietti();
-            // setSelectedCardIdForExternalEdit(null); // opzionale: deseleziona dopo upload
-        }}
-      />
-      <hr />
-      <LinkWebsite
-        codcliente={codcliente}
-        idbvisita={selectedCardIdForExternalEdit} // Deve essere l'ID del biglietto
-        // currentWebsite={biglietti?.find(b => b.idbvisita === selectedCardIdForExternalEdit)?.sitoWeb || ''}
-        onLinkSuccess={() => {
-            refetchBiglietti();
-            // setSelectedCardIdForExternalEdit(null); // opzionale
-        }}
-      />
-      <hr />
-      */}
+      <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+        <StyleIcon fontSize="large" sx={{ mr: 1, color: 'secondary.main' }} />
+        <Typography variant="h4" component="h2">
+          Gestione Biglietti da Visita
+        </Typography>
+      </Box>
 
       <CardList
         codcliente={codcliente}
         biglietti={biglietti || []}
-        onActionSuccess={refetchBiglietti} // refetchBiglietti farà ricaricare la lista
-        isLoading={loadingBiglietti}
-        errorLoading={errorBiglietti}
-        // onSelectCardForExternalEdit={setSelectedCardIdForExternalEdit} // Passa la funzione per settare l'ID
+        onActionSuccess={refetchBiglietti}
+        isLoading={loadingBiglietti} // Passa lo stato di caricamento dei biglietti
+        errorLoading={errorBiglietti} // Passa l'eventuale errore di caricamento biglietti
       />
 
-      {/* Sezione opzionale Esplora File/Folder */}
-      {/* <button onClick={() => console.log('Logica per Fai("TreeFolder", { codcliente }) da implementare')}>Esplora File (Simulato)</button> */}
-    </div>
+      {/*
+        La sezione opzionale Esplora File/Folder potrebbe essere un altro componente Paper o Card.
+        Esempio:
+        <Paper elevation={2} sx={{p:2, mt:4}}>
+            <Typography variant="h6">Esplora File</Typography>
+            // Qui il componente per Fai("TreeFolder")
+        </Paper>
+      */}
+    </Container>
   );
 }
 

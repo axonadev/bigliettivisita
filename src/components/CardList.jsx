@@ -1,12 +1,20 @@
 import React, { useState } from 'react';
-import useAction from '../hooks/useAction'; // Per InviaWhatsApp
-import useSave from '../hooks/useSave';   // Per SalvaBiglietto (creazione)
-import UploadCard from './UploadCard';
-import LinkWebsite from './LinkWebsite';
+import useAction from '../hooks/useAction';
+import useSave from '../hooks/useSave';
+import UploadCard from './UploadCard'; // Questo sarà aggiornato con MUI dopo
+import LinkWebsite from './LinkWebsite'; // Questo sarà aggiornato con MUI dopo
+import {
+  Box, Typography, TextField, Button, Card, CardContent, CardActions,
+  Grid, CircularProgress, Alert, Paper, IconButton, Link as MuiLink, Collapse, Divider
+} from '@mui/material';
+import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
+import SendIcon from '@mui/icons-material/Send';
+import EditIcon from '@mui/icons-material/Edit';
+import CloseIcon from '@mui/icons-material/Close';
+import ImageIcon from '@mui/icons-material/Image'; // Per placeholder immagini
+import LanguageIcon from '@mui/icons-material/Language'; // Per sito web
 
-// Rimuovo mockBiglietti perché i dati arrivano via props da AdminDashboard -> useFetch
-
-function CardList({ codcliente, biglietti, onActionSuccess, isLoading, errorLoading /*, onSelectCardForExternalEdit*/ }) {
+function CardList({ codcliente, biglietti, onActionSuccess, isLoading, errorLoading }) {
   console.log('Props di CardList:', { codcliente, biglietti, onActionSuccess, isLoading, errorLoading });
   const [numeroWhatsApp, setNumeroWhatsApp] = useState('');
   const [editingCardId, setEditingCardId] = useState(null);
@@ -15,154 +23,193 @@ function CardList({ codcliente, biglietti, onActionSuccess, isLoading, errorLoad
   const { doAction: inviaWhatsApp, loading: loadingWhatsApp, error: errorWhatsApp, response: responseWhatsApp } = useAction('InviaWhatsApp');
   const { saveData: salvaNuovoBiglietto, loading: loadingSalva, error: errorSalva, response: responseSalva } = useSave('SalvaBiglietto');
 
+  const [showWhatsAppAlert, setShowWhatsAppAlert] = useState({ show: false, message: '', severity: 'info' });
+  const [showNewCardAlert, setShowNewCardAlert] = useState({ show: false, message: '', severity: 'info' });
+
 
   const handleInviaWhatsApp = async (idbvisita) => {
     if (!numeroWhatsApp.trim()) {
-      alert('Inserisci un numero WhatsApp valido.');
+      setShowWhatsAppAlert({show: true, message: 'Inserisci un numero WhatsApp valido.', severity: 'warning'});
       return;
     }
-    console.log(`Tentativo invio biglietto ${idbvisita} a ${numeroWhatsApp} (cliente ${codcliente})`);
+    setShowWhatsAppAlert({show: false, message: '', severity: 'info'});
     try {
       const params = { numero: numeroWhatsApp, idbvisita, idcliente: codcliente };
       const result = await inviaWhatsApp(params);
       if (result && result.success) {
-        alert(result.message || `Biglietto ${idbvisita} inviato con successo a ${numeroWhatsApp}.`);
-        setNumeroWhatsApp(''); // Pulisce l'input dopo l'invio
-        if (onActionSuccess) onActionSuccess(); // Callback generica per azioni riuscite
+        setShowWhatsAppAlert({show: true, message: result.message || `Biglietto ${idbvisita} inviato con successo a ${numeroWhatsApp}.`, severity: 'success'});
+        setNumeroWhatsApp('');
+        if (onActionSuccess) onActionSuccess();
       } else {
-        alert(result.message || 'Errore durante l\'invio WhatsApp.');
+        setShowWhatsAppAlert({show: true, message: result.message || 'Errore durante l\'invio WhatsApp.', severity: 'error'});
       }
     } catch (err) {
-      alert(`Errore invio WhatsApp: ${err.message || 'Si è verificato un problema.'}`);
+      setShowWhatsAppAlert({show: true, message: err.message || 'Si è verificato un problema.', severity: 'error'});
     }
+    setTimeout(() => setShowWhatsAppAlert(prev => ({...prev, show: false})), 4000);
   };
 
   const handleCreaNuovoBiglietto = async () => {
     if (!newCardName.trim()) {
-      alert("Inserisci un nome per il nuovo biglietto.");
+      setShowNewCardAlert({show: true, message: 'Inserisci un nome per il nuovo biglietto.', severity: 'warning'});
       return;
     }
-    console.log(`Creazione nuovo biglietto: "${newCardName}" per cliente ${codcliente}`);
+    setShowNewCardAlert({show: false, message: '', severity: 'info'});
     try {
       const payload = { codcliente, nome: newCardName };
       const result = await salvaNuovoBiglietto(payload);
       if (result && result.success) {
-        alert(result.message || `Biglietto "${newCardName}" creato con ID: ${result.idbvisita}. Ora puoi modificare immagini e link.`);
+        setShowNewCardAlert({show: true, message: result.message || `Biglietto "${newCardName}" creato con ID: ${result.idbvisita}.`, severity: 'success'});
         setNewCardName('');
-        if (onActionSuccess) onActionSuccess(); // Per ricaricare la lista biglietti
-        // Potremmo voler impostare editingCardId = result.idbvisita per aprire subito la modifica
-        // setEditingCardId(result.idbvisita);
+        if (onActionSuccess) onActionSuccess();
       } else {
-        alert(result.message || 'Errore durante la creazione del biglietto.');
+        setShowNewCardAlert({show: true, message: result.message || 'Errore durante la creazione del biglietto.', severity: 'error'});
       }
     } catch (err) {
-      alert(`Errore creazione biglietto: ${err.message || 'Si è verificato un problema.'}`);
+      setShowNewCardAlert({show: true, message: err.message || 'Si è verificato un problema.', severity: 'error'});
     }
+     setTimeout(() => setShowNewCardAlert(prev => ({...prev, show: false})), 4000);
   };
 
-  const handleStartEdit = (idbvisita) => {
-    setEditingCardId(idbvisita);
-    // if(onSelectCardForExternalEdit) onSelectCardForExternalEdit(idbvisita); // Per la gestione esterna (rimossa per ora)
-  };
-
+  const handleStartEdit = (idbvisita) => setEditingCardId(idbvisita);
+  const handleStopEdit = () => setEditingCardId(null);
   const handleEditActionSuccess = () => {
-    // Chiamato da UploadCard o LinkWebsite dopo un'azione riuscita DENTRO la modalità di modifica
-    if (onActionSuccess) onActionSuccess(); // Fa il refetch della lista generale
-    // Non chiudiamo necessariamente la modifica, l'utente potrebbe voler fare più operazioni
-    // setEditingCardId(null); // Se si vuole chiudere dopo ogni singola azione di modifica
+    if (onActionSuccess) onActionSuccess();
+  };
+
+  if (isLoading) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
+        <CircularProgress />
+        <Typography sx={{ml:2}}>Caricamento biglietti...</Typography>
+      </Box>
+    );
   }
-
-  const handleStopEdit = () => {
-    setEditingCardId(null);
-    // if(onSelectCardForExternalEdit) onSelectCardForExternalEdit(null); // Per la gestione esterna
+  if (errorLoading) {
+    return <Alert severity="error" sx={{m:2}}>Errore nel caricamento della lista biglietti: {errorLoading.message}</Alert>;
   }
-
-  if (isLoading) return <p>Caricamento lista biglietti...</p>;
-  if (errorLoading) return <p style={{color: 'red'}}>Errore nel caricamento della lista biglietti: {errorLoading.message}</p>;
-
 
   return (
-    <div>
-      <h4>Lista Biglietti da Visita</h4>
-      <div style={{border: '1px solid #ddd', padding: '10px', marginBottom: '15px'}}>
-        <h5>Crea Nuovo Biglietto</h5>
-        <input
-            type="text"
+    <Box>
+      <Paper elevation={2} sx={{ p: 2, mb: 3 }}>
+        <Typography variant="h6" gutterBottom>Crea Nuovo Biglietto</Typography>
+        <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+          <TextField
+            label="Nome nuovo biglietto"
             value={newCardName}
             onChange={(e) => setNewCardName(e.target.value)}
-            placeholder="Nome nuovo biglietto"
             disabled={loadingSalva}
-        />
-        <button onClick={handleCreaNuovoBiglietto} disabled={loadingSalva}>
-            {loadingSalva ? 'Creazione...' : 'Crea Nuovo Biglietto'}
-        </button>
-        {errorSalva && <p style={{color: 'red'}}>Errore creazione: {errorSalva.message}</p>}
-        {responseSalva && responseSalva.message && !responseSalva.success && <p style={{color: 'orange'}}>{responseSalva.message}</p>}
-      </div>
+            fullWidth
+            size="small"
+          />
+          <Button
+            variant="contained"
+            onClick={handleCreaNuovoBiglietto}
+            disabled={loadingSalva}
+            startIcon={loadingSalva ? <CircularProgress size={20} color="inherit" /> : <AddCircleOutlineIcon />}
+          >
+            Crea
+          </Button>
+        </Box>
+        {showNewCardAlert.show && <Alert severity={showNewCardAlert.severity} sx={{ mt: 2 }}>{showNewCardAlert.message}</Alert>}
+        {errorSalva && !showNewCardAlert.show && <Alert severity="warning" sx={{ mt: 2 }}>Hook error (Salva): {errorSalva.message}</Alert>}
+      </Paper>
 
-      {(!biglietti || biglietti.length === 0) && !isLoading && (
-        <p>Nessun biglietto da visita trovato per questo cliente.</p>
+      {(!biglietti || biglietti.length === 0) && (
+        <Typography sx={{mt:2, textAlign:'center', color:'text.secondary'}}>Nessun biglietto da visita ancora creato.</Typography>
       )}
 
       {biglietti && biglietti.length > 0 && (
-        <>
-          <input
-            type="tel"
-            placeholder="Numero WhatsApp per invio"
+        <Paper elevation={2} sx={{ p: 2, mb: 3 }}>
+          <Typography variant="h6" gutterBottom>Invia Biglietto via WhatsApp</Typography>
+          <TextField
+            label="Numero WhatsApp per invio (es. +393331234567)"
             value={numeroWhatsApp}
             onChange={(e) => setNumeroWhatsApp(e.target.value)}
-            style={{ marginBottom: '10px', padding: '8px', display: 'block', width: 'calc(100% - 20px)' }}
+            fullWidth
+            size="small"
             disabled={loadingWhatsApp}
+            sx={{ mb: 1 }}
           />
-          {errorWhatsApp && <p style={{ color: 'red' }}>Errore Invio: {errorWhatsApp.message}</p>}
-          {responseWhatsApp && responseWhatsApp.message && !responseWhatsApp.success && <p style={{color: 'orange'}}>{responseWhatsApp.message}</p>}
-        </>
+           {showWhatsAppAlert.show && <Alert severity={showWhatsAppAlert.severity} sx={{ mt: 1, mb:1 }}>{showWhatsAppAlert.message}</Alert>}
+           {errorWhatsApp && !showWhatsAppAlert.show && <Alert severity="warning" sx={{ mt: 1 }}>Hook error (WhatsApp): {errorWhatsApp.message}</Alert>}
+        </Paper>
       )}
 
-      {biglietti.map(card => (
-        <div key={card.idbvisita} style={{ border: '1px solid #ccc', padding: '10px', marginBottom: '10px', position: 'relative' }}>
-          <h5>{card.nome} (ID: {card.idbvisita})</h5>
-          <div style={{ display: 'flex', gap: '10px', marginBottom: '10px', flexWrap: 'wrap' }}>
-            {card.fronteUrl && <img src={card.fronteUrl} alt={`Fronte ${card.nome}`} style={{ width: '100px', height:'auto', border: '1px solid #eee' }} />}
-            {!card.fronteUrl && <div style={{width: '100px', height:'60px', border:'1px dashed #eee', display:'flex', alignItems:'center', justifyContent:'center', fontSize:'0.8em', color:'#777'}}>No Fronte</div>}
-            {card.retroUrl && <img src={card.retroUrl} alt={`Retro ${card.nome}`} style={{ width: '100px', height:'auto', border: '1px solid #eee' }} />}
-            {!card.retroUrl && <div style={{width: '100px', height:'60px', border:'1px dashed #eee', display:'flex', alignItems:'center', justifyContent:'center', fontSize:'0.8em', color:'#777'}}>No Retro</div>}
-          </div>
-          <p>Sito Web: {card.sitoWeb ? <a href={card.sitoWeb} target="_blank" rel="noopener noreferrer">{card.sitoWeb}</a> : 'Non associato'}</p>
-          <p>Link pubblico: <code>{`/visit/${codcliente}/${card.idbvisita}`}</code></p>
-
-          <button
-            onClick={() => handleInviaWhatsApp(card.idbvisita)}
-            disabled={loadingWhatsApp || !numeroWhatsApp.trim()}
-            style={{marginRight: '5px'}}
-          >
-            {loadingWhatsApp ? 'Invio...' : 'Invia WhatsApp'}
-          </button>
-          <button onClick={() => editingCardId === card.idbvisita ? handleStopEdit() : handleStartEdit(card.idbvisita)} >
-            {editingCardId === card.idbvisita ? 'Chiudi Modifica' : 'Modifica Immagini/Link'}
-          </button>
-
-          {editingCardId === card.idbvisita && (
-            <div style={{ border: '1px dashed blue', padding: '15px', marginTop: '15px', backgroundColor: '#f0f8ff' }}>
-              <p><strong>Modifica Biglietto: {card.nome}</strong></p>
-              <UploadCard
-                codcliente={codcliente}
-                idbvisita={card.idbvisita}
-                onUploadSuccess={handleEditActionSuccess}
-              />
-              <hr style={{margin: '15px 0'}}/>
-              <LinkWebsite
-                codcliente={codcliente}
-                idbvisita={card.idbvisita}
-                currentWebsite={card.sitoWeb || ''} // Assicura che sia una stringa
-                onLinkSuccess={handleEditActionSuccess}
-              />
-              {/* Il bottone "Chiudi Modifica" è ora quello che fa toggle */}
-            </div>
-          )}
-        </div>
-      ))}
-    </div>
+      <Grid container spacing={3}>
+        {biglietti.map(card => (
+          <Grid item xs={12} sm={6} md={4} key={card.idbvisita}>
+            <Card>
+              <CardContent>
+                <Typography variant="h5" component="div" gutterBottom>
+                  {card.nome}
+                </Typography>
+                <Typography sx={{ mb: 0.5 }} color="text.secondary">
+                  ID: {card.idbvisita}
+                </Typography>
+                <Box sx={{ display: 'flex', gap: 1, my: 1, justifyContent: 'center' }}>
+                  {card.fronteUrl ? (
+                    <img src={card.fronteUrl} alt="Fronte" style={{ width: '80px', height: '50px', objectFit: 'cover', border: '1px solid #ddd', borderRadius: '4px' }} />
+                  ) : (
+                    <Box sx={{ width: '80px', height: '50px', border: '1px dashed #ddd', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '4px' }}>
+                      <ImageIcon color="action" />
+                    </Box>
+                  )}
+                  {card.retroUrl ? (
+                    <img src={card.retroUrl} alt="Retro" style={{ width: '80px', height: '50px', objectFit: 'cover', border: '1px solid #ddd', borderRadius: '4px' }} />
+                  ) : (
+                     <Box sx={{ width: '80px', height: '50px', border: '1px dashed #ddd', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '4px' }}>
+                      <ImageIcon color="action" />
+                    </Box>
+                  )}
+                </Box>
+                <Box sx={{display: 'flex', alignItems: 'center', mb: 0.5}}>
+                    <LanguageIcon fontSize="small" sx={{mr:0.5, color: 'text.secondary'}}/>
+                    <Typography variant="body2" color="text.secondary">
+                    Sito Web: {card.sitoWeb ? <MuiLink href={card.sitoWeb} target="_blank" rel="noopener noreferrer">{card.sitoWeb}</MuiLink> : 'Non associato'}
+                    </Typography>
+                </Box>
+                <Typography variant="caption" display="block" sx={{wordBreak: 'break-all'}}>
+                  Link: <code>{`/visit/${codcliente}/${card.idbvisita}`}</code>
+                </Typography>
+              </CardContent>
+              <CardActions sx={{ justifyContent: 'space-between', p:2, borderTop: '1px solid #eee' }}>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  color="secondary"
+                  onClick={() => handleInviaWhatsApp(card.idbvisita)}
+                  disabled={loadingWhatsApp || !numeroWhatsApp.trim()}
+                  startIcon={loadingWhatsApp ? <CircularProgress size={16} /> : <SendIcon />}
+                >
+                  Invia
+                </Button>
+                <IconButton onClick={() => editingCardId === card.idbvisita ? handleStopEdit() : handleStartEdit(card.idbvisita)} color="primary">
+                  {editingCardId === card.idbvisita ? <CloseIcon /> : <EditIcon />}
+                </IconButton>
+              </CardActions>
+              <Collapse in={editingCardId === card.idbvisita} timeout="auto" unmountOnExit>
+                <Paper elevation={0} sx={{ p: 2, backgroundColor: (theme) => theme.palette.action.hover, borderTop: '1px solid #ddd' }}>
+                  <Typography variant="subtitle1" gutterBottom><strong>Modifica: {card.nome}</strong></Typography>
+                  <UploadCard
+                    codcliente={codcliente}
+                    idbvisita={card.idbvisita}
+                    onUploadSuccess={handleEditActionSuccess}
+                  />
+                  <Divider sx={{ my: 2 }} />
+                  <LinkWebsite
+                    codcliente={codcliente}
+                    idbvisita={card.idbvisita}
+                    currentWebsite={card.sitoWeb || ''}
+                    onLinkSuccess={handleEditActionSuccess}
+                  />
+                </Paper>
+              </Collapse>
+            </Card>
+          </Grid>
+        ))}
+      </Grid>
+    </Box>
   );
 }
 
